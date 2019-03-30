@@ -129,7 +129,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn get<Q,>(&self, k: &Q,) -> V
-    where K: Borrow<Q>, Q: Hash + Eq, {
+    where K: Borrow<Q>, Q: Hash + Eq + ?Sized, {
     self.0.get(k,).map(|v,| v.get(),).unwrap_or(V::ZERO,)
   }
   /// Returns the key-value pair corresponding to the supplied key.
@@ -207,7 +207,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn remove<Q,>(&mut self, k: &Q,) -> V
-    where K: Borrow<Q>, Q: Eq + Hash, {
+    where K: Borrow<Q>, Q: Eq + Hash + ?Sized, {
     self.0.remove(k,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
   }
   /// Removes and returns both the key and the value mapped to the key.
