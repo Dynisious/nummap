@@ -1,3 +1,5 @@
+//! Defines the [NumMap] struct which acts as if all unmapped keys have a value of 0.
+//! 
 //! Author --- daniel.bechaz@gmail.com  
 //! Last Moddified --- 2019-03-30
 
