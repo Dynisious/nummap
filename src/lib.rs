@@ -137,6 +137,8 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// The supplied key may be any borrowed form of the map's key type, but `Hash` and
   /// `Eq` on the borrowed form must match those for the key type.
   /// 
+  /// Enabled with feature "map_get_key_value".
+  /// 
   /// # Examples
   /// 
   /// ```rust
