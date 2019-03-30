@@ -4,6 +4,10 @@ name = "nummap"
 version = "0.1.0"
 authors = ["Dynisious <daniel.bechaz@gmail.com>"]
 edition = "2018"
+repository = "https://github.com/Dynisious/nummap"
+keywords = ["number", "num", "hashmap"]
+catagories = ["data-structures"]
+license = "0BSD"
 
 [features]
 map_get_key_value = []
