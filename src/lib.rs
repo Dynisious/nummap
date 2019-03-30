@@ -1,7 +1,7 @@
 //! Defines the [NumMap] struct which acts as if all unmapped keys have a value of 0.
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-03-30
+//! Last Moddified --- 2019-03-31
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
@@ -78,7 +78,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// let s = RandomState::new();
   /// let mut map = NumMap::<i32, i32,>::with_hasher(s);
   /// 
-  /// map.insert(1, 2);
+  /// map.set(1, 2);
   /// ```
   /// 
   /// # Warnings
@@ -102,7 +102,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// let s = RandomState::new();
   /// let mut map = NumMap::<i32, i32,>::with_capacity_and_hasher(10, s);
   /// 
-  /// map.insert(1, 2);
+  /// map.set(1, 2);
   /// ```
   /// 
   /// # Warning
@@ -123,7 +123,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// 
   /// let mut map = NumMap::<i32, i32,>::new();
   /// 
-  /// map.insert(1, 2);
+  /// map.set(1, 2);
   /// assert_eq!(map.get(&1), 2);
   /// assert_eq!(map.get(&2), 0);
   /// ```
@@ -132,22 +132,27 @@ impl<K, V, S,> NumMap<K, V, S,>
     where K: Borrow<Q>, Q: Hash + Eq, {
     self.0.get(k,).map(|v,| v.get(),).unwrap_or(V::ZERO,)
   }
-  /// Returns the value mapped to the corresponding key.
+  /// Returns the key-value pair corresponding to the supplied key.
+  /// 
+  /// The supplied key may be any borrowed form of the map's key type, but `Hash` and
+  /// `Eq` on the borrowed form must match those for the key type.
   /// 
   /// # Examples
   /// 
   /// ```rust
+  /// #![feature(map_get_key_value)]
+  /// 
   /// use nummap::NumMap;
   /// 
-  /// let mut map = NumMap::<i32, i32,>::new();
+  /// let mut map = NumMap::new();
   /// 
-  /// map.insert(1, 2);
-  /// assert_eq!(map.get(&1), 2);
-  /// assert_eq!(map.get(&2), 0);
+  /// map.set(1, 2);
+  /// assert_eq!(map.get_key_value(&1), (&1, 2));
+  /// assert_eq!(map.get_key_value(&2), (&2, 0));
   /// ```
   #[cfg(feature = "map_get_key_value",)]
   #[inline]
-  pub fn get_key_value(&self, k: &K,) -> (&K, V) {
+  pub fn get_key_value<'a,>(&'a self, k: &'a K,) -> (&'a K, V) {
     self.0.get_key_value(k,).map(|(k, v,),| (k, v.get(),),).unwrap_or((k, V::ZERO,),)
   }
   /// Updates the value mapped to the corresponding key and returns the old value.
@@ -159,14 +164,31 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// 
   /// let mut map = NumMap::<i32, i32,>::new();
   /// 
-  /// assert_eq!(map.insert(1, 2), 0);
-  /// assert_eq!(map.insert(1, 0), 2);
+  /// assert_eq!(map.set(1, 2), 0);
+  /// assert_eq!(map.set(1, 0), 2);
   /// ```
-  pub fn insert(&mut self, k: K, v: V,) -> V {
+  pub fn set(&mut self, k: K, v: V,) -> V {
     match V::NonZero::new(v,) {
       Some(v) => self.0.insert(k, v,),
       None => self.0.remove(&k,)
     }.map(V::NonZero::get,).unwrap_or(V::ZERO,)
+  }
+  /// Updates the value mapped to the corresponding key and returns the old value.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// use std::num::NonZeroU32;
+  /// 
+  /// let mut map = NumMap::<u32, u32,>::new();
+  /// let two = NonZeroU32::new(2,).unwrap();
+  /// 
+  /// assert_eq!(map.insert(1, two), 0);
+  /// ```
+  #[inline]
+  pub fn insert(&mut self, k: K, v: V::NonZero,) -> V {
+    self.0.insert(k, v,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
   }
   /// Removes and returns the value mapped to the corresponding key.
   /// 
@@ -178,12 +200,13 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// let mut map = NumMap::<i32, i32,>::new();
   /// 
   /// assert_eq!(map.remove(&1), 0);
-  /// assert_eq!(map.insert(1, 2), 0);
+  /// assert_eq!(map.set(1, 2), 0);
   /// assert_eq!(map.remove(&1), 2);
   /// ```
   #[inline]
-  pub fn remove(&mut self, k: &K,) -> V {
-    self.0.remove(&k,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
+  pub fn remove<Q,>(&mut self, k: &Q,) -> V
+    where K: Borrow<Q>, Q: Eq + Hash, {
+    self.0.remove(k,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
   }
   /// Removes and returns both the key and the value mapped to the key.
   /// 
@@ -195,7 +218,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// let mut map = NumMap::<i32, i32,>::new();
   /// 
   /// assert_eq!(map.remove_entry(1), (1, 0,));
-  /// assert_eq!(map.insert(1, 2), 0);
+  /// assert_eq!(map.set(1, 2), 0);
   /// assert_eq!(map.remove_entry(1), (1, 2,));
   /// ```
   #[inline]
