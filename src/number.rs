@@ -185,7 +185,7 @@ mod tests {
   use super::*;
 
   #[test]
-  fn test_i32_number() {
+  fn test_signed_number() {
     /*Just a test that the `NonZero` implementations for i32
     (and assumingly other i-types) work as expected.
     */

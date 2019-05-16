@@ -3,10 +3,8 @@
 //! # Examples
 //! 
 //! ```rust
-//! use nummap::*;
-//! use std::num::NonZeroUsize;
-//! 
-//! let mut map = NumMap::new();
+//! # #[macro_use] extern crate nummap; fn main() {
+//! let mut map = map![(1, 2), (3, 4)];
 //! 
 //! //We have set no mapping but we still get 0.
 //! assert_eq!(map.get(&0,), 0,);
@@ -14,6 +12,7 @@
 //! //We didn't set a mapping here either but we still get 0.
 //! assert_eq!(map.set(0, 10,), 0,);
 //! assert_eq!(map.get(&0,), 10,);
+//! # }
 //! ```
 //! 
 //! Author --- daniel.bechaz@gmail.com  
@@ -30,6 +29,28 @@ use std::{
   collections::{hash_map::RandomState, HashMap,},
   cmp::Ordering,
 };
+
+/// Creates a `NumMap` in a simiar manner to `vec![]`.
+/// 
+/// The specific `BuildHasher` to use can be specified after the mappings.
+/// 
+/// ```rust
+/// # #[macro_use] extern crate nummap; fn main() {
+/// map![(0, 1), (2, 3); std::collections::hash_map::RandomState];
+/// # }
+/// ```
+#[macro_export]
+macro_rules! map {
+  ($(($k:expr, $v:expr $(,)? ),)* ; $tp:ty) => {{
+    let mut map = nummap::NumMap::<_, _, $tp>::default();
+
+    $(map.set($k, $v,);)*
+
+    map
+  }};
+  ($(($k:expr, $v:expr $(,)? )),* ; $tp:ty) => (map!($(($k, $v,),)*));
+  ($($t:tt)*) => (map!($($t)*; std::collections::hash_map::RandomState));
+}
 
 mod number;
 mod iter;
