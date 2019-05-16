@@ -1,7 +1,5 @@
 //! Defines the [NumMap] struct which acts as if all unmapped keys have a value of 0.
 //! 
-//! # Examples
-//! 
 //! ```rust
 //! # #[macro_use] extern crate nummap; fn main() {
 //! let mut map = map![(1, 2), (3, 4)];
@@ -15,6 +13,16 @@
 //! # }
 //! ```
 //! 
+//! Since all keys are considered mapped arithmetic is implemented on values.
+//! 
+//! ```rust
+//! # #[macro_use] extern crate nummap; fn main() {
+//! let map = map![(1, 2), (3, 4)] + map![(1, 4), (3, 2)];
+//! 
+//! assert_eq!(map, map![(1, 3), (3, 3)] * 2,);
+//! # }
+//! ```
+//! 
 //! Author --- daniel.bechaz@gmail.com  
 //! Last Moddified --- 2019-05-16
 
@@ -23,7 +31,13 @@
 
 use std::{
   hash::*, iter::*, fmt,
-  ops::{Deref, DerefMut,},
+  ops::{
+    Deref, DerefMut,
+    Add, AddAssign,
+    Neg, Sub, SubAssign,
+    Mul, MulAssign,
+    Div, DivAssign,
+  },
   borrow::{Borrow, BorrowMut,},
   convert::{AsRef, AsMut,},
   collections::{hash_map::RandomState, HashMap,},
@@ -515,6 +529,161 @@ impl<K, V, S,> fmt::Debug for NumMap<K, V, S,>
   fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result { self.0.fmt(fmt,) }
 }
 
+impl<K, V1, V2, S1, S2,> Add<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    Self: AddAssign<HashMap<K, V2, S2>>, {
+  type Output = Self;
+
+  #[inline]
+  fn add(mut self, rhs: HashMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
+}
+
+impl<K, V1, V2, S1, S2,> Add<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    V2: Number,
+    Self: AddAssign<NumMap<K, V2, S2>>, {
+  type Output = Self;
+
+  #[inline]
+  fn add(mut self, rhs: NumMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
+}
+
+impl<K, V1, V2, S1, S2,> AddAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+  V1: Number + Add<V2, Output = V1>,
+  S1: BuildHasher, {
+  #[inline]
+  fn add_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
+    for (k, v,) in rhs {
+      let v = self.get(&k,) + v;
+      self.set(k, v,);
+    }
+  }
+}
+
+impl<K, V1, V2, S1, S2,> AddAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+  V1: Number + Add<V2, Output = V1>,
+  V2: Number,
+  S1: BuildHasher, {
+  #[inline]
+  fn add_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
+    for (k, v,) in rhs {
+      let v = self.get(&k,) + v;
+      self.set(k, v,);
+    }
+  }
+}
+
+impl<K, V, S,> Neg for NumMap<K, V, S,>
+  where K: Eq + Hash,
+    V: Number + Neg,
+    S: BuildHasher + Default,
+    <V as Neg>::Output: Number, {
+  type Output = NumMap<K, <V as Neg>::Output, S,>;
+
+  #[inline]
+  fn neg(self,) -> Self::Output { self.into_iter().map(|(k, v,),| (k, -v,),).collect() }
+}
+
+impl<K, V1, V2, S1, S2,> Sub<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    V2: Number,
+    Self: SubAssign<NumMap<K, V2, S2>>, {
+  type Output = Self;
+
+  #[inline]
+  fn sub(mut self, rhs: NumMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
+}
+
+impl<K, V1, V2, S1, S2,> Sub<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    Self: SubAssign<HashMap<K, V2, S2>>, {
+  type Output = Self;
+
+  #[inline]
+  fn sub(mut self, rhs: HashMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
+}
+
+impl<K, V1, V2, S1, S2,> SubAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+  V1: Number + Sub<V2, Output = V1>,
+  S1: BuildHasher, {
+  #[inline]
+  fn sub_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
+    for (k, v,) in rhs {
+      let v = self.get(&k,) - v;
+      self.set(k, v,);
+    }
+  }
+}
+
+impl<K, V1, V2, S1, S2,> SubAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+  V1: Number + Sub<V2, Output = V1>,
+  V2: Number,
+  S1: BuildHasher, {
+  #[inline]
+  fn sub_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
+    for (k, v,) in rhs {
+      let v = self.get(&k,) - v;
+      self.set(k, v,);
+    }
+  }
+}
+
+impl<K, V1, V2, S,> Mul<V2> for NumMap<K, V1, S,>
+  where V1: Number,
+    Self: MulAssign<V2>, {
+  type Output = Self;
+
+  #[inline]
+  fn mul(mut self, rhs: V2,) -> Self::Output { self *= rhs; self }
+}
+
+impl<K, V1, V2, S,> MulAssign<V2> for NumMap<K, V1, S,>
+  where K: Eq + Clone + Hash,
+    V1: Number + Mul<V2, Output = V1>,
+    V2: Clone,
+    S: BuildHasher, {
+  #[inline]
+  fn mul_assign(&mut self, rhs: V2,) {
+    let keys = self.keys().cloned().collect::<Vec<_>>();
+
+    for k in keys {
+      let v = self.get(&k,) * rhs.clone();
+
+      self.set(k, v,);
+    }
+  }
+}
+
+impl<K, V1, V2, S,> Div<V2> for NumMap<K, V1, S,>
+  where V1: Number,
+    Self: DivAssign<V2>, {
+  type Output = Self;
+
+  #[inline]
+  fn div(mut self, rhs: V2,) -> Self::Output { self /= rhs; self }
+}
+
+impl<K, V1, V2, S,> DivAssign<V2> for NumMap<K, V1, S,>
+  where K: Eq + Clone + Hash,
+    V1: Number + Div<V2, Output = V1>,
+    V2: Clone,
+    S: BuildHasher, {
+  #[inline]
+  fn div_assign(&mut self, rhs: V2,) {
+    let keys = self.keys().cloned().collect::<Vec<_>>();
+
+    for k in keys {
+      let v = self.get(&k,) / rhs.clone();
+
+      self.set(k, v,);
+    }
+  }
+}
+
 #[cfg(test,)]
 mod tests {
   use super::*;
@@ -534,5 +703,15 @@ mod tests {
     assert!(neg_two == neg_two);
     assert!(neg_two >= neg_two);
     assert!(neg_two <= neg_two);
+  }
+  #[test]
+  fn test_math() {
+    let one = (1u32..=10).map(|x,| (x, x,),).collect::<NumMap<_, _,>>();
+    let two = (1u32..=10).map(|x,| (x, 2 * x,),).collect::<NumMap<_, _,>>();
+
+    assert!(one.clone() + one.clone() == two);
+    assert!(two.clone() - one.clone() == one);
+    assert!(one.clone() * 2 == two);
+    assert!(two / 2 == one);
   }
 }
