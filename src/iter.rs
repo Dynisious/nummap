@@ -1,14 +1,14 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-03-30
+//! Last Moddified --- 2019-05-16
 
 use super::*;
 use std::collections::hash_map;
 
 /// The Iterator which visits all non zero values in a [NumMap].
-pub struct Iter<'a, K: 'a, V: 'a,>(pub(crate) Map<hash_map::Iter<'a, K, V::NonZero>, fn((&'a K, &'a V::NonZero,)) -> (&'a K, V,)>)
+pub struct Iter<'a, K, V,>(pub(crate) Map<hash_map::Iter<'a, K, V::NonZero>, fn((&'a K, &'a V::NonZero,)) -> (&'a K, V,)>,)
   where V: Number;
 
-impl<'a, K: 'a, V: 'a,> Iterator for Iter<'a, K, V,>
+impl<'a, K, V,> Iterator for Iter<'a, K, V,>
   where V: Number, {
   type Item = (&'a K, V,);
 
@@ -19,7 +19,7 @@ impl<'a, K: 'a, V: 'a,> Iterator for Iter<'a, K, V,>
 }
 
 /// The IntoIterator type which visits all non zero values from a [NumMap].
-pub struct IntoIter<K, V,>(pub(crate) Map<hash_map::IntoIter<K, V::NonZero>, fn((K, V::NonZero,)) -> (K, V,)>)
+pub struct IntoIter<K, V,>(pub(crate) Map<hash_map::IntoIter<K, V::NonZero>, fn((K, V::NonZero,)) -> (K, V,)>,)
   where V: Number;
 
 impl<K, V,> Iterator for IntoIter<K, V,>

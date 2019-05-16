@@ -1,15 +1,10 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-03-30
+//! Last Moddified --- 2019-05-16
 
-use std::{num::*, ops::*, mem,};
+use std::{num::*, mem,};
 
 /// A marker trait for types which have a [NonZero] equivilant.
-pub trait Number: Add + AddAssign
-  + Sub + SubAssign
-  + Mul + MulAssign
-  + Div + DivAssign
-  + Eq + Ord
-  + Copy + Sized {
+pub trait Number: Copy + Sized {
   /// The [NonZero] equivilant.
   type NonZero: NonZero<Self>;
 
@@ -89,13 +84,16 @@ impl Number for i128 {
   const ZERO: Self = 0;
 }
 
-/// A marker trait for types which have are `NonZero` numbers.
-pub trait NonZero<Num,>: Eq + Ord + Copy + Sized
+/// A marker trait for types which are `NonZero` numbers.
+pub trait NonZero<Num,>: Copy + Sized
   where Num: Number, {
   /// Constructs a new value returning `None` for `0`.
   fn new(num: Num,) -> Option<Self>;
   /// Gets the inner value.
   fn get(self,) -> Num;
+  /// Gets the inner value or 0.
+  #[inline]
+  fn num(num: Option<Self>,) -> Num { num.map(Self::get,).unwrap_or(Num::ZERO,) }
 }
 
 impl NonZero<usize> for NonZeroUsize {

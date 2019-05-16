@@ -1,7 +1,23 @@
 //! Defines the [NumMap] struct which acts as if all unmapped keys have a value of 0.
 //! 
+//! # Examples
+//! 
+//! ```rust
+//! use nummap::*;
+//! use std::num::NonZeroUsize;
+//! 
+//! let mut map = NumMap::new();
+//! 
+//! //We have set no mapping but we still get 0.
+//! assert_eq!(map.get(&0,), 0,);
+//! 
+//! //We didn't set a mapping here either but we still get 0.
+//! assert_eq!(map.set(0, 10,), 0,);
+//! assert_eq!(map.get(&0,), 10,);
+//! ```
+//! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-03-31
+//! Last Moddified --- 2019-05-16
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
@@ -25,7 +41,8 @@ pub struct NumMap<K, V, S = RandomState,>(HashMap<K, V::NonZero, S>,)
   where V: Number;
 
 impl<K, V,> NumMap<K, V, RandomState,>
-  where K: Hash + Eq, V: Number, {
+  where K: Hash + Eq,
+    V: Number, {
   /// Creates an empty `NumMap`.
   /// 
   /// The hash map is initially created with a capacity of 0, so it will not allocate until it is first inserted into.
@@ -36,6 +53,7 @@ impl<K, V,> NumMap<K, V, RandomState,>
   /// use nummap::NumMap;
   /// 
   /// let mut map: NumMap<&str, i32> = NumMap::new();
+  /// ```
   #[inline]
   pub fn new() -> Self { HashMap::new().into() }
   /// Creates an empty `NumMap` with the specified capacity.
@@ -59,12 +77,14 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// An iterator over all the key/value pairs present in this `NumMap`.
   #[inline]
   pub fn iter(&self,) -> Iter<K, V,> {
-    Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.get(),),))
+    Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.get(),),),)
   }
 }
 
 impl<K, V, S,> NumMap<K, V, S,>
-  where K: Eq + Hash, V: Number, S: BuildHasher, {
+  where K: Eq + Hash,
+    V: Number,
+    S: BuildHasher, {
   /// Creates an empty `NumMap` which will use the given hash builder to hash keys.
   /// 
   /// The created map has the default initial capacity.
@@ -129,8 +149,9 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn get<Q,>(&self, k: &Q,) -> V
-    where K: Borrow<Q>, Q: Hash + Eq + ?Sized, {
-    self.0.get(k,).map(|v,| v.get(),).unwrap_or(V::ZERO,)
+    where K: Borrow<Q>,
+      Q: Hash + Eq + ?Sized, {
+    V::NonZero::num(self.0.get(k,).copied(),)
   }
   /// Returns the key-value pair corresponding to the supplied key.
   /// 
@@ -154,8 +175,10 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[cfg(feature = "map_get_key_value",)]
   #[inline]
-  pub fn get_key_value<'a,>(&'a self, k: &'a K,) -> (&'a K, V) {
-    self.0.get_key_value(k,).map(|(k, v,),| (k, v.get(),),).unwrap_or((k, V::ZERO,),)
+  pub fn get_key_value<'a,>(&self, k: &'a K,) -> (&'a K, V) {
+    self.get_key_value(k,)
+    .map(move |(k, v,),| (k, v.get(),),)
+    .unwrap_or((k, V::ZERO,),)
   }
   /// Updates the value mapped to the corresponding key and returns the old value.
   /// 
@@ -169,11 +192,12 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// assert_eq!(map.set(1, 2), 0);
   /// assert_eq!(map.set(1, 0), 2);
   /// ```
+  #[inline]
   pub fn set(&mut self, k: K, v: V,) -> V {
     match V::NonZero::new(v,) {
-      Some(v) => self.0.insert(k, v,),
-      None => self.0.remove(&k,)
-    }.map(V::NonZero::get,).unwrap_or(V::ZERO,)
+      Some(v) => self.insert(k, v,),
+      None => self.remove(&k,),
+    }
   }
   /// Updates the value mapped to the corresponding key and returns the old value.
   /// 
@@ -190,7 +214,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn insert(&mut self, k: K, v: V::NonZero,) -> V {
-    self.0.insert(k, v,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
+    V::NonZero::num(self.0.insert(k, v,),)
   }
   /// Removes and returns the value mapped to the corresponding key.
   /// 
@@ -207,8 +231,9 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn remove<Q,>(&mut self, k: &Q,) -> V
-    where K: Borrow<Q>, Q: Eq + Hash + ?Sized, {
-    self.0.remove(k,).map(V::NonZero::get,).unwrap_or(V::ZERO,)
+    where K: Borrow<Q>,
+      Q: Eq + Hash + ?Sized, {
+    V::NonZero::num(self.0.remove(k,),)
   }
   /// Removes and returns both the key and the value mapped to the key.
   /// 
@@ -225,7 +250,9 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[inline]
   pub fn remove_entry(&mut self, k: K,) -> (K, V) {
-    self.0.remove_entry(&k,).map(|(k, v,),| (k, v.get(),),).unwrap_or((k, V::ZERO,),)
+    self.0.remove_entry(&k,)
+    .map(move |(k, v,),| (k, v.get(),),)
+    .unwrap_or((k, V::ZERO,),)
   }
   /// Retains only the elements specified by the predicate.
   /// 
@@ -249,7 +276,8 @@ impl<K, V, S,> NumMap<K, V, S,>
 }
 
 impl<K, V, S,> Clone for NumMap<K, V, S,>
-  where V: Number, HashMap<K, V::NonZero, S>: Clone, {
+  where V: Number,
+    HashMap<K, V::NonZero, S>: Clone, {
   #[inline]
   fn clone(&self,) -> Self { self.0.clone().into() }
 }
@@ -266,64 +294,116 @@ impl<K, V, S,> Default for NumMap<K, V, S,>
   fn default() -> Self { HashMap::default().into() }
 }
 
-impl<K, V, S,> PartialEq<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
-  where V: Number, HashMap<K, V::NonZero, S>: PartialEq, {
+impl<K, V1, V2, S1, S2,> PartialEq<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    Self: PartialOrd<HashMap<K, V2, S2>>, {
   #[inline]
-  fn eq(&self, rhs: &HashMap<K, V::NonZero, S>,) -> bool { self.0 == *rhs }
-}
-
-impl<K, V, S,> PartialEq for NumMap<K, V, S,>
-  where V: Number, Self: PartialEq<HashMap<K, V::NonZero, S>>, {
-  #[inline]
-  fn eq(&self, rhs: &Self,) -> bool { *self == rhs.0 }
-}
-
-impl<K, V, S,> Eq for NumMap<K, V, S,>
-  where V: Number, HashMap<K, V::NonZero, S>: Eq, {}
-
-/// Compares the two sets; sets are only considered `Greater` or `Less` if **ALL** of the
-/// mapping are `Greater` or `Less` (`Equal` is ignored).
-impl<K, V, S,> PartialOrd<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
-  where K: Eq + Hash, V: Number, S: BuildHasher,
-    Self: PartialEq<HashMap<K, V::NonZero, S>>, {
-  fn partial_cmp(&self, rhs: &HashMap<K, V::NonZero, S>,) -> Option<Ordering> {
-    let mut lhs_iter;
-    let mut rhs_iter;
-    //Iterate over all values from the largest set.
-    let iter: &mut dyn Iterator<Item = Ordering> = if self.len() >= rhs.len() {
-      lhs_iter = self.0.iter().map(|(k, v,),| rhs.get(k,)
-        .map(move |rhs,| v.get().cmp(&rhs.get(),),)
-        .unwrap_or(Ordering::Greater,),
-      );
-
-      &mut lhs_iter
-    } else {
-      rhs_iter = rhs.iter().map(|(k, rhs,),| self.0.get(k,)
-        .map(move |v,| v.get().cmp(&rhs.get(),),)
-        .unwrap_or(Ordering::Less,),
-      );
-
-      &mut rhs_iter
-    };
-    //Filter out all equal values.
-    let mut iter = iter.filter(move |o,| o != &Ordering::Equal,);
-    let ord = match iter.next() {
-      Some(ord) => ord,
-      //If there is no unequal values the sets are equal.
-      None => return Some(Ordering::Equal),
-    };
-
-    //If all orderings are aligned the sets are ordered.
-    if iter.all(move |o,| ord == o,) { return Some(ord) }
-    else { None }
+  fn eq(&self, rhs: &HashMap<K, V2, S2>,) -> bool {
+    self.partial_cmp(rhs,)
+    .map(|cmp,| cmp == Ordering::Equal,)
+    .unwrap_or(false,)
   }
 }
 
-impl<K, V, S,> PartialOrd for NumMap<K, V, S,>
-  where K: Eq + Hash, V: Number, S: BuildHasher,
-    Self: PartialOrd<HashMap<K, V::NonZero, S>>, {
+impl<K, V1, V2, S1, S2,> PartialEq<NumMap<K, V2, S2,>> for NumMap<K, V1, S1,>
+  where V1: Number,
+    V2: Number,
+    Self: PartialOrd<NumMap<K, V2, S2>>, {
   #[inline]
-  fn partial_cmp(&self, rhs: &Self,) -> Option<Ordering> { self.partial_cmp(&rhs.0,) }
+  fn eq(&self, rhs: &NumMap<K, V2, S2>,) -> bool {
+    //If the two sets are not equal size then they cannot be equal.
+    if self.len() != rhs.len() { return false }
+
+    self.partial_cmp(rhs,)
+    .map(|cmp,| cmp == Ordering::Equal,)
+    .unwrap_or(false,)
+  }
+}
+
+impl<K, V, S,> Eq for NumMap<K, V, S,>
+  where V: Number,
+    Self: PartialEq<Self>, {}
+
+/// Compares the two sets; sets are only considered `Greater` or `Less` if **ALL** of the
+/// mapping are `Greater` or `Less` (`Equal` is ignored).
+impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+    V1: Number + PartialOrd<V1> + PartialOrd<V2>,
+    S1: BuildHasher,
+    S2: BuildHasher, {
+  fn partial_cmp(&self, rhs: &HashMap<K, V2, S2>,) -> Option<Ordering> {
+    use std::collections::HashSet;
+
+    //The collection of keys.
+    let keys = self.keys()
+      .chain(rhs.keys(),)
+      .collect::<HashSet<_>>()
+      .into_iter();
+    //The comparisons between all of the value pairs.
+    let mut comparisons = keys.map(|k,| {
+        let lhs = self.get(k,);
+        
+        match rhs.get(k,) {
+          Some(rhs) => lhs.partial_cmp(rhs,),
+          None => lhs.partial_cmp(&V1::ZERO,),
+        }
+      },)
+      //Filter out equal comparisons.
+      .filter(|cmp,| *cmp != Some(Ordering::Equal),);
+    //The first comparison found.
+    let cmp = match comparisons.next() {
+      //If a pair cannot be compared then the sets cannot be compared.
+      Some(cmp) => cmp?,
+      //If we found no nonequal comparisons the sets are equal.
+      None => return Some(Ordering::Equal),
+    };
+
+    for compare in comparisons {
+      //If a pair cannot be compared or two different comparisons exist in the set they
+      //cannot be compared.
+      if compare? != cmp { return None }
+    }
+
+    Some(cmp)
+  }
+}
+
+/// Compares the two sets; sets are only considered `Greater` or `Less` if **ALL** of the
+/// mapping are `Greater` or `Less` (`Equal` is ignored).
+impl<K, V1, V2, S1, S2,> PartialOrd<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+  where K: Eq + Hash,
+    V1: Number + PartialOrd<V2>,
+    V2: Number,
+    S1: BuildHasher,
+    S2: BuildHasher, {
+  fn partial_cmp(&self, rhs: &NumMap<K, V2, S2>,) -> Option<Ordering> {
+    use std::collections::HashSet;
+
+    //The collection of keys.
+    let keys = self.keys()
+      .chain(rhs.keys(),)
+      .collect::<HashSet<_>>()
+      .into_iter();
+    //The comparisons between all of the value pairs.
+    let mut comparisons = keys.map(|k,| self.get(k,).partial_cmp(&rhs.get(k,),),)
+      //Filter out equal comparisons.
+      .filter(|cmp,| *cmp != Some(Ordering::Equal),);
+    //The first comparison found.
+    let cmp = match comparisons.next() {
+      //If a pair cannot be compared then the sets cannot be compared.
+      Some(cmp) => cmp?,
+      //If we found no nonequal comparisons the sets are equal.
+      None => return Some(Ordering::Equal),
+    };
+
+    for compare in comparisons {
+      //If a pair cannot be compared or two different comparisons exist in the set they
+      //cannot be compared.
+      if compare? != cmp { return None }
+    }
+
+    Some(cmp)
+  }
 }
 
 impl<K, V, S, A,> FromIterator<A> for NumMap<K, V, S,>
@@ -399,7 +479,7 @@ impl<K, V, S,> BorrowMut<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
 impl<K, V, S,> AsRef<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
   where V: Number, {
   #[inline]
-  fn as_ref(&self,) -> &HashMap<K, V::NonZero, S> { &self.0 }
+  fn as_ref(&self,) -> &HashMap<K, V::NonZero, S> { &self }
 }
 
 impl<K, V, S,> AsMut<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>

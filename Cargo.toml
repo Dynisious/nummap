@@ -1,12 +1,11 @@
 
 [package]
 name = "nummap"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Dynisious <daniel.bechaz@gmail.com>"]
 edition = "2018"
 repository = "https://github.com/Dynisious/nummap"
 keywords = ["number", "num", "hashmap"]
-catagories = ["data-structures"]
 license = "0BSD"
 description = "Defines a wrapper around a `HashMap` of number values which behaves as if **ALL** keys are mapped but `0` values are not stored."
 readme = "README.md"
