@@ -1,5 +1,5 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-16
+//! Last Moddified --- 2019-05-17
 
 use std::{num::*, mem,};
 
@@ -82,6 +82,18 @@ impl Number for i128 {
   type NonZero = NonZeroU128;
 
   const ZERO: Self = 0;
+}
+
+impl Number for f32 {
+  type NonZero = NonZeroU32;
+
+  const ZERO: Self = 0.0;
+}
+
+impl Number for f64 {
+  type NonZero = NonZeroU64;
+
+  const ZERO: Self = 0.0;
 }
 
 /// A marker trait for types which are `NonZero` numbers.
@@ -204,6 +216,24 @@ impl NonZero<i128> for NonZeroU128 {
   unsafe fn new_unchecked(num: i128,) -> Self { mem::transmute(num,) }
   #[inline]
   fn get(self,) -> i128 { unsafe { mem::transmute(Self::get(self,),) } }
+}
+
+impl NonZero<f32> for NonZeroU32 {
+  #[inline]
+  fn new(num: f32,) -> Option<Self> { Self::new(unsafe { mem::transmute(num,) },) }
+  #[inline]
+  unsafe fn new_unchecked(num: f32,) -> Self { mem::transmute(num,) }
+  #[inline]
+  fn get(self,) -> f32 { unsafe { mem::transmute(Self::get(self,),) } }
+}
+
+impl NonZero<f64> for NonZeroU64 {
+  #[inline]
+  fn new(num: f64,) -> Option<Self> { Self::new(unsafe { mem::transmute(num,) },) }
+  #[inline]
+  unsafe fn new_unchecked(num: f64,) -> Self { mem::transmute(num,) }
+  #[inline]
+  fn get(self,) -> f64 { unsafe { mem::transmute(Self::get(self,),) } }
 }
 
 #[cfg(test,)]
