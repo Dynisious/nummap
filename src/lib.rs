@@ -24,7 +24,7 @@
 //! ```
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-16
+//! Last Moddified --- 2019-05-17
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
@@ -113,6 +113,13 @@ impl<K, V, S,> NumMap<K, V, S,>
   #[inline]
   pub fn iter(&self,) -> Iter<K, V,> {
     Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.get(),),),)
+  }
+  /// An iterator over all the key/value pairs present in this `NumMap`.
+  /// 
+  /// All the values will be removed from the map.
+  #[inline]
+  pub fn drain(&mut self,) -> Drain<K, V,> {
+    Drain(self.0.drain().map(|(k, v,): (K, V::NonZero,),| (k, v.get(),),),)
   }
 }
 
