@@ -234,6 +234,38 @@ impl<K, V, S,> NumMap<K, V, S,>
       None => self.remove(&k,),
     }
   }
+  /// Updates all of the non-zero mappings using the passed `update` function.
+  /// 
+  /// This is useful in place of for loops over `iter_mut` on a `HashMap` as it
+  /// interfaces using the `V` type instead of the inner Non-Zero type.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// # #[macro_use] extern crate nummap; fn main() {
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = map![(1, 2), (3, 4), (5, 6)];
+  /// 
+  /// map.update(|k, v| *k + v);
+  /// 
+  /// assert_eq!(map, map![(1, 3), (3, 7), (5, 11)]);
+  /// # }
+  /// ```
+  #[inline]
+  pub fn update(&mut self, mut update: impl FnMut(&K, V,) -> V,)
+    where S: Default, {
+    use std::mem;
+
+    //The map of the old values.
+    let map = mem::replace(self, Self::with_capacity_and_hasher(self.capacity(), S::default(),),);
+
+    //Reinsert the mapped values.
+    for (k, mut v,) in map {
+      v = update(&k, v,);
+      self.set(k, v,);
+    }
+  }
   /// Updates the value mapped to the corresponding key and returns the old value.
   /// 
   /// # Examples
