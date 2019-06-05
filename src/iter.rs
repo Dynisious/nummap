@@ -1,8 +1,11 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-17
+//! Last Moddified --- 2019-05-06
 
 use super::*;
+#[cfg(not(feature = "hashbrown",),)]
 use std::collections::hash_map;
+#[cfg(feature = "hashbrown",)]
+use hashbrown::hash_map;
 
 /// The Iterator which visits all non zero values in a [NumMap].
 pub struct Iter<'a, K, V,>(pub(crate) Map<hash_map::Iter<'a, K, V::NonZero>, fn((&'a K, &'a V::NonZero,)) -> (&'a K, V,)>,)

@@ -24,11 +24,13 @@
 //! ```
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-17
+//! Last Moddified --- 2019-05-06
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
+#![feature(associated_type_defaults,)]
 
+extern crate core;
 use std::{
   hash::*, iter::*, fmt,
   ops::{
@@ -40,7 +42,6 @@ use std::{
   },
   borrow::{Borrow, BorrowMut,},
   convert::{AsRef, AsMut,},
-  collections::{hash_map::RandomState, HashMap,},
   cmp::Ordering,
 };
 
@@ -50,76 +51,153 @@ use std::{
 /// 
 /// ```rust
 /// # #[macro_use] extern crate nummap; fn main() {
-/// map![(0, 1), (2, 3); std::collections::hash_map::RandomState];
+/// map![(0, 1), (2, 3),; nummap::DefaultHashBuilder];
 /// # }
 /// ```
+#[cfg(feature = "hashbrown",)]
 #[macro_export]
 macro_rules! map {
   ($(($k:expr, $v:expr $(,)? ),)* ; $tp:ty) => {{
-    let mut map = nummap::NumMap::<_, _, $tp>::default();
+    let mut map = ::nummap::NumMap::<_, _, $tp>::default();
 
     $(map.set($k, $v,);)*
 
     map
   }};
-  ($(($k:expr, $v:expr $(,)? )),* ; $tp:ty) => (map!($(($k, $v,),)*));
-  ($($t:tt)*) => (map!($($t)*; std::collections::hash_map::RandomState));
+  (($k1:expr, $v1:expr $(,)? ) $(, ($k2:expr, $v2:expr $(,)? ))* $(,)* ; $tp:ty) => (map!(($k1, $v1), $(($k2, $v2,),)* ; $tp));
+  (($k1:expr, $v1:expr $(,)? ) $(, ($k2:expr, $v2:expr $(,)? ))* $(,)*) => (map!(($k1, $v1), $(($k2, $v2,),)* ; ::nummap::DefaultHashBuilder));
+}
+
+/// Creates a `NumMap` in a simiar manner to `vec![]`.
+/// 
+/// The specific `BuildHasher` to use can be specified after the mappings.
+/// 
+/// ```rust
+/// # #[macro_use] extern crate nummap; fn main() {
+/// map![(0, 1), (2, 3),; std::collections::hash_map::RandomState];
+/// # }
+/// ```
+#[cfg(not(feature = "hashbrown",),)]
+#[macro_export]
+macro_rules! map {
+  ($(($k:expr, $v:expr $(,)? ),)* ; $tp:ty) => {{
+    let mut map = ::nummap::NumMap::<_, _, $tp>::default();
+
+    $(map.set($k, $v,);)*
+
+    map
+  }};
+  (($k1:expr, $v1:expr $(,)? ) $(, ($k2:expr, $v2:expr $(,)? ))* $(,)* ; $tp:ty) => (map!(($k1, $v1), $(($k2, $v2,),)* ; $tp));
+  (($k1:expr, $v1:expr $(,)? ) $(, ($k2:expr, $v2:expr $(,)? ))* $(,)*) => (map!(($k1, $v1), $(($k2, $v2,),)* ; ::nummap::RandomState));
 }
 
 mod number;
 mod iter;
+#[cfg(not(feature = "hashbrown",),)]
+mod with_std;
+#[cfg(feature = "hashbrown",)]
+mod no_std;
 
 pub use self::{number::*, iter::*,};
-
-/// A map of numbers where all keys are considered mapped but 0 values are not stored.
-pub struct NumMap<K, V, S = RandomState,>(HashMap<K, V::NonZero, S>,)
-  where V: Number;
-
-impl<K, V,> NumMap<K, V, RandomState,>
-  where K: Hash + Eq,
-    V: Number, {
-  /// Creates an empty `NumMap`.
-  /// 
-  /// The hash map is initially created with a capacity of 0, so it will not allocate until it is first inserted into.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// 
-  /// let mut map: NumMap<&str, i32> = NumMap::new();
-  /// ```
-  #[inline]
-  pub fn new() -> Self { HashMap::new().into() }
-  /// Creates an empty `NumMap` with the specified capacity.
-  /// 
-  /// The `NumMap` will be able to hold at least capacity elements without reallocating.
-  /// If capacity is 0, the hash map will not allocate.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// 
-  /// let map: NumMap<&str, i32> = NumMap::with_capacity(10);
-  /// ```
-  #[inline]
-  pub fn with_capacity(capactiy: usize,) -> Self { HashMap::with_capacity(capactiy,).into() }
-}
+#[cfg(not(feature = "hashbrown",),)]
+pub use self::with_std::*;
+#[cfg(feature = "hashbrown",)]
+pub use self::no_std::*;
 
 impl<K, V, S,> NumMap<K, V, S,>
   where V: Number, {
   /// An iterator over all the key/value pairs present in this `NumMap`.
   #[inline]
   pub fn iter(&self,) -> Iter<K, V,> {
-    Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.get(),),),)
+    Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.as_num(),),),)
   }
   /// An iterator over all the key/value pairs present in this `NumMap`.
   /// 
   /// All the values will be removed from the map.
   #[inline]
   pub fn drain(&mut self,) -> Drain<K, V,> {
-    Drain(self.0.drain().map(|(k, v,): (K, V::NonZero,),| (k, v.get(),),),)
+    Drain(self.0.drain().map(|(k, v,): (K, V::NonZero,),| (k, v.as_num(),),),)
+  }
+}
+
+impl<K, V, S,> NumMap<K, V, S,>
+  where K: Eq + Hash,
+    V: Number,
+    S: BuildHasher,
+    Option<V::NonZero>: ToNumber<V,>, {
+  /// Returns the value mapped to the corresponding key.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// map.set(1, 2);
+  /// assert_eq!(map.get(&1), 2);
+  /// assert_eq!(map.get(&2), 0);
+  /// ```
+  #[inline]
+  pub fn get<Q,>(&self, k: &Q,) -> V
+    where K: Borrow<Q>,
+      Q: Hash + Eq + ?Sized, {
+    self.0.get(k,).copied().as_num()
+  }
+  /// Updates the value mapped to the corresponding key and returns the old value.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// assert_eq!(map.set(1, 2), 0);
+  /// assert_eq!(map.set(1, 0), 2);
+  /// ```
+  #[inline]
+  pub fn set(&mut self, k: K, v: V,) -> V {
+    match V::NonZero::new(v,) {
+      Some(v) => self.insert(k, v,),
+      None => self.remove(&k,),
+    }
+  }
+  /// Updates the value mapped to the corresponding key and returns the old value.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// use std::num::NonZeroU32;
+  /// 
+  /// let mut map = NumMap::<u32, u32,>::new();
+  /// let two = NonZeroU32::new(2,).unwrap();
+  /// 
+  /// assert_eq!(map.insert(1, two), 0);
+  /// ```
+  #[inline]
+  pub fn insert(&mut self, k: K, v: V::NonZero,) -> V {
+    self.0.insert(k, v,).as_num()
+  }
+  /// Removes and returns the value mapped to the corresponding key.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// assert_eq!(map.remove(&1), 0);
+  /// assert_eq!(map.set(1, 2), 0);
+  /// assert_eq!(map.remove(&1), 2);
+  /// ```
+  #[inline]
+  pub fn remove<Q,>(&mut self, k: &Q,) -> V
+    where K: Borrow<Q>,
+      Q: Eq + Hash + ?Sized, {
+    self.0.remove(k,).as_num()
   }
 }
 
@@ -138,7 +216,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// use std::collections::hash_map::RandomState;
   /// 
   /// let s = RandomState::new();
-  /// let mut map = NumMap::<i32, i32,>::with_hasher(s);
+  /// let mut map = NumMap::<i32, i32, RandomState,>::with_hasher(s);
   /// 
   /// map.set(1, 2);
   /// ```
@@ -162,7 +240,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// use std::collections::hash_map::RandomState;
   /// 
   /// let s = RandomState::new();
-  /// let mut map = NumMap::<i32, i32,>::with_capacity_and_hasher(10, s);
+  /// let mut map = NumMap::<i32, i32, RandomState,>::with_capacity_and_hasher(10, s);
   /// 
   /// map.set(1, 2);
   /// ```
@@ -175,25 +253,6 @@ impl<K, V, S,> NumMap<K, V, S,>
   #[inline]
   pub fn with_capacity_and_hasher(capacity: usize, hash_builder: S,) -> Self {
     HashMap::with_capacity_and_hasher(capacity, hash_builder,).into()
-  }
-  /// Returns the value mapped to the corresponding key.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// 
-  /// let mut map = NumMap::<i32, i32,>::new();
-  /// 
-  /// map.set(1, 2);
-  /// assert_eq!(map.get(&1), 2);
-  /// assert_eq!(map.get(&2), 0);
-  /// ```
-  #[inline]
-  pub fn get<Q,>(&self, k: &Q,) -> V
-    where K: Borrow<Q>,
-      Q: Hash + Eq + ?Sized, {
-    V::NonZero::num(self.0.get(k,).copied(),)
   }
   /// Returns the key-value pair corresponding to the supplied key.
   /// 
@@ -217,97 +276,10 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// ```
   #[cfg(feature = "map_get_key_value",)]
   #[inline]
-  pub fn get_key_value<'a,>(&self, k: &'a K,) -> (&'a K, V) {
-    self.get_key_value(k,)
-    .map(move |(k, v,),| (k, v.get(),),)
+  pub fn get_key_value<'a,>(&'a self, k: &'a K,) -> (&'a K, V) {
+    self.0.get_key_value(k,)
+    .map(move |(k, v,),| (k, v.as_num(),),)
     .unwrap_or((k, V::ZERO,),)
-  }
-  /// Updates the value mapped to the corresponding key and returns the old value.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// 
-  /// let mut map = NumMap::<i32, i32,>::new();
-  /// 
-  /// assert_eq!(map.set(1, 2), 0);
-  /// assert_eq!(map.set(1, 0), 2);
-  /// ```
-  #[inline]
-  pub fn set(&mut self, k: K, v: V,) -> V {
-    match V::NonZero::new(v,) {
-      Some(v) => self.insert(k, v,),
-      None => self.remove(&k,),
-    }
-  }
-  /// Updates all of the non-zero mappings using the passed `update` function.
-  /// 
-  /// This is useful in place of for loops over `iter_mut` on a `HashMap` as it
-  /// interfaces using the `V` type instead of the inner Non-Zero type.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// # #[macro_use] extern crate nummap; fn main() {
-  /// use nummap::NumMap;
-  /// 
-  /// let mut map = map![(1, 2), (3, 4), (5, 6)];
-  /// 
-  /// map.update(|k, v| *k + v);
-  /// 
-  /// assert_eq!(map, map![(1, 3), (3, 7), (5, 11)]);
-  /// # }
-  /// ```
-  #[inline]
-  pub fn update(&mut self, mut update: impl FnMut(&K, V,) -> V,)
-    where S: Default, {
-    use std::mem;
-
-    //The map of the old values.
-    let map = mem::replace(self, Self::with_capacity_and_hasher(self.capacity(), S::default(),),);
-
-    //Reinsert the mapped values.
-    for (k, mut v,) in map {
-      v = update(&k, v,);
-      self.set(k, v,);
-    }
-  }
-  /// Updates the value mapped to the corresponding key and returns the old value.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// use std::num::NonZeroU32;
-  /// 
-  /// let mut map = NumMap::<u32, u32,>::new();
-  /// let two = NonZeroU32::new(2,).unwrap();
-  /// 
-  /// assert_eq!(map.insert(1, two), 0);
-  /// ```
-  #[inline]
-  pub fn insert(&mut self, k: K, v: V::NonZero,) -> V {
-    V::NonZero::num(self.0.insert(k, v,),)
-  }
-  /// Removes and returns the value mapped to the corresponding key.
-  /// 
-  /// # Examples
-  /// 
-  /// ```rust
-  /// use nummap::NumMap;
-  /// 
-  /// let mut map = NumMap::<i32, i32,>::new();
-  /// 
-  /// assert_eq!(map.remove(&1), 0);
-  /// assert_eq!(map.set(1, 2), 0);
-  /// assert_eq!(map.remove(&1), 2);
-  /// ```
-  #[inline]
-  pub fn remove<Q,>(&mut self, k: &Q,) -> V
-    where K: Borrow<Q>,
-      Q: Eq + Hash + ?Sized, {
-    V::NonZero::num(self.0.remove(k,),)
   }
   /// Removes and returns both the key and the value mapped to the key.
   /// 
@@ -325,7 +297,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   #[inline]
   pub fn remove_entry(&mut self, k: K,) -> (K, V) {
     self.0.remove_entry(&k,)
-    .map(move |(k, v,),| (k, v.get(),),)
+    .map(move |(k, v,),| (k, v.as_num(),),)
     .unwrap_or((k, V::ZERO,),)
   }
   /// Retains only the elements specified by the predicate.
@@ -345,7 +317,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   #[inline]
   pub fn retain<F,>(&mut self, mut f: F,)
     where F: FnMut(&K, V,) -> bool, {
-    self.0.retain(move |k, v,| f(k, v.get(),),)
+    self.0.retain(move |k, v,| f(k, v.as_num(),),)
   }
 }
 
@@ -371,11 +343,11 @@ impl<K, V, S,> Default for NumMap<K, V, S,>
 impl<K, V1, V2, S1, S2,> PartialEq<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where V1: Number,
     Self: PartialOrd<HashMap<K, V2, S2>>, {
-  #[inline]
   fn eq(&self, rhs: &HashMap<K, V2, S2>,) -> bool {
-    self.partial_cmp(rhs,)
-    .map(|cmp,| cmp == Ordering::Equal,)
-    .unwrap_or(false,)
+    match self.partial_cmp(rhs,) {
+      Some(cmp) => cmp == Ordering::Equal,
+      None => false,
+    }
   }
 }
 
@@ -383,14 +355,14 @@ impl<K, V1, V2, S1, S2,> PartialEq<NumMap<K, V2, S2,>> for NumMap<K, V1, S1,>
   where V1: Number,
     V2: Number,
     Self: PartialOrd<NumMap<K, V2, S2>>, {
-  #[inline]
   fn eq(&self, rhs: &NumMap<K, V2, S2>,) -> bool {
     //If the two sets are not equal size then they cannot be equal.
     if self.len() != rhs.len() { return false }
 
-    self.partial_cmp(rhs,)
-    .map(|cmp,| cmp == Ordering::Equal,)
-    .unwrap_or(false,)
+    match self.partial_cmp(rhs,) {
+      Some(cmp) => cmp == Ordering::Equal,
+      None => false,
+    }
   }
 }
 
@@ -402,9 +374,11 @@ impl<K, V, S,> Eq for NumMap<K, V, S,>
 /// mapping are `Greater` or `Less` (`Equal` is ignored).
 impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Hash,
-    V1: Number + PartialOrd<V1> + PartialOrd<V2>,
+    V1: Number + PartialOrd<V2>,
+    V2: Number,
     S1: BuildHasher,
-    S2: BuildHasher, {
+    S2: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn partial_cmp(&self, rhs: &HashMap<K, V2, S2>,) -> Option<Ordering> {
     use std::collections::HashSet;
 
@@ -418,8 +392,8 @@ impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
         let lhs = self.get(k,);
         
         match rhs.get(k,) {
-          Some(rhs) => lhs.partial_cmp(rhs,),
-          None => lhs.partial_cmp(&V1::ZERO,),
+          Some(rhs) => lhs.partial_cmp(&rhs,),
+          None => lhs.partial_cmp(&V2::ZERO,),
         }
       },)
       //Filter out equal comparisons.
@@ -449,7 +423,9 @@ impl<K, V1, V2, S1, S2,> PartialOrd<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
     V1: Number + PartialOrd<V2>,
     V2: Number,
     S1: BuildHasher,
-    S2: BuildHasher, {
+    S2: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>,
+    Option<V2::NonZero>: ToNumber<V2,>, {
   fn partial_cmp(&self, rhs: &NumMap<K, V2, S2>,) -> Option<Ordering> {
     use std::collections::HashSet;
 
@@ -496,7 +472,6 @@ impl<K, V, S, A,> FromIterator<A> for NumMap<K, V, S,>
 
 impl<'a, K, V, S,> Extend<(&'a K, &'a V,)> for NumMap<K, V, S,>
   where K: 'a + Hash + Eq + Copy, V: 'a + Number, S: Default + BuildHasher, {
-  #[inline]
   fn extend<Iter,>(&mut self, iter: Iter,)
     where Iter: IntoIterator<Item = (&'a K, &'a V,)>, {
     self.extend(iter.into_iter()
@@ -521,9 +496,8 @@ impl<K, V, S,> IntoIterator for NumMap<K, V, S,>
   type Item = (K, V,);
   type IntoIter = IntoIter<K, V,>;
 
-  #[inline]
   fn into_iter(self,) -> Self::IntoIter {
-    IntoIter(self.0.into_iter().map(|(k, v,): (K, V::NonZero,),| (k, v.get(),),),)
+    IntoIter(self.0.into_iter().map(|(k, v,): (K, V::NonZero,),| (k, v.as_num(),),),)
   }
 }
 
@@ -621,8 +595,8 @@ impl<'a, K, V1, V2, S1, S2,> Add<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
 impl<K, V1, V2, S1, S2,> AddAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Hash,
   V1: Number + Add<V2, Output = V1>,
-  S1: BuildHasher, {
-  #[inline]
+  S1: BuildHasher,
+  Option<V1::NonZero>: ToNumber<V1,>, {
   fn add_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(&k,) + v;
@@ -636,8 +610,8 @@ impl<'a, K, V1, V2, S1, S2,> AddAssign<&'a HashMap<K, V2, S2>> for NumMap<K, V1,
   where K: Eq + Clone + Hash,
   V1: Number + Add<V2, Output = V1>,
   V2: Clone,
-  S1: BuildHasher, {
-  #[inline]
+  S1: BuildHasher,
+  Option<V1::NonZero>: ToNumber<V1,>, {
   fn add_assign(&mut self, rhs: &'a HashMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(k,) + v.clone();
@@ -651,8 +625,8 @@ impl<K, V1, V2, S1, S2,> AddAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Hash,
     V1: Number + Add<V2, Output = V1>,
     V2: Number,
-    S1: BuildHasher, {
-  #[inline]
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn add_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(&k,) + v;
@@ -666,8 +640,8 @@ impl<'a, K, V1, V2, S1, S2,> AddAssign<&'a NumMap<K, V2, S2>> for NumMap<K, V1, 
   where K: Eq + Clone + Hash,
     V1: Number + Add<V2, Output = V1>,
     V2: Number,
-    S1: BuildHasher, {
-  #[inline]
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn add_assign(&mut self, rhs: &'a NumMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(k,) + v;
@@ -728,9 +702,9 @@ impl<'a, K, V1, V2, S1, S2,> Sub<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
 
 impl<K, V1, V2, S1, S2,> SubAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Hash,
-  V1: Number + Sub<V2, Output = V1>,
-  S1: BuildHasher, {
-  #[inline]
+    V1: Number + Sub<V2, Output = V1>,
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn sub_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(&k,) - v;
@@ -742,10 +716,10 @@ impl<K, V1, V2, S1, S2,> SubAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
 
 impl<'a, K, V1, V2, S1, S2,> SubAssign<&'a HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Clone + Hash,
-  V1: Number + Sub<V2, Output = V1>,
-  V2: Clone,
-  S1: BuildHasher, {
-  #[inline]
+    V1: Number + Sub<V2, Output = V1>,
+    V2: Clone,
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn sub_assign(&mut self, rhs: &'a HashMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(k,) - v.clone();
@@ -759,8 +733,8 @@ impl<K, V1, V2, S1, S2,> SubAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
   where K: Eq + Hash,
     V1: Number + Sub<V2, Output = V1>,
     V2: Number,
-    S1: BuildHasher, {
-  #[inline]
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn sub_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(&k,) - v;
@@ -774,8 +748,8 @@ impl<'a, K, V1, V2, S1, S2,> SubAssign<&'a NumMap<K, V2, S2>> for NumMap<K, V1, 
   where K: Eq + Clone + Hash,
     V1: Number + Sub<V2, Output = V1>,
     V2: Number,
-    S1: BuildHasher, {
-  #[inline]
+    S1: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn sub_assign(&mut self, rhs: &'a NumMap<K, V2, S2>,) {
     for (k, v,) in rhs {
       let v = self.get(k,) - v;
@@ -798,8 +772,8 @@ impl<K, V1, V2, S,> MulAssign<V2> for NumMap<K, V1, S,>
   where K: Eq + Clone + Hash,
     V1: Number + Mul<V2, Output = V1>,
     V2: Clone,
-    S: BuildHasher, {
-  #[inline]
+    S: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn mul_assign(&mut self, rhs: V2,) {
     let keys = self.keys().cloned().collect::<Vec<_>>();
 
@@ -824,8 +798,8 @@ impl<K, V1, V2, S,> DivAssign<V2> for NumMap<K, V1, S,>
   where K: Eq + Clone + Hash,
     V1: Number + Div<V2, Output = V1>,
     V2: Clone,
-    S: BuildHasher, {
-  #[inline]
+    S: BuildHasher,
+    Option<V1::NonZero>: ToNumber<V1,>, {
   fn div_assign(&mut self, rhs: V2,) {
     let keys = self.keys().cloned().collect::<Vec<_>>();
 
