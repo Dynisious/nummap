@@ -27,11 +27,12 @@
 //! Last Moddified --- 2019-05-06
 
 #![deny(missing_docs,)]
+#![cfg_attr(feature = "hashbrown", no_std,)]
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
 #![feature(associated_type_defaults,)]
 
 extern crate core;
-use std::{
+use core::{
   hash::*, iter::*, fmt,
   ops::{
     Deref, DerefMut,
@@ -302,22 +303,34 @@ impl<K, V, S,> NumMap<K, V, S,>
   }
   /// Retains only the elements specified by the predicate.
   /// 
-  /// In other words, remove all pairs (k, v) such that f(&k,&mut v) returns false.
+  /// In other words, remove all pairs (k, v) such that f(&k,&mut v) returns `false`.
+  /// 
+  /// Be aware that setting a value to its zero value will have it removed implicitly.
   /// 
   /// # Examples
   /// 
   /// ```rust
   /// use nummap::NumMap;
   /// 
-  /// let mut map: NumMap<i32, i32> = (0..8).map(|x|(x, x*10)).collect();
+  /// let mut map: NumMap<i32, i32> = (0..8).map(|x| (x, x*10)).collect();
   /// 
-  /// map.retain(|&k, _| k % 2 == 1);
-  /// assert_eq!(map.len(), 4);
+  /// map.retain(|&k, v| {
+  ///   *v %= 3;
+  ///   k % 2 == 1
+  /// },);
+  /// assert_eq!(map.len(), 3);
   /// ```
-  #[inline]
   pub fn retain<F,>(&mut self, mut f: F,)
-    where F: FnMut(&K, V,) -> bool, {
-    self.0.retain(move |k, v,| f(k, v.as_num(),),)
+    where F: FnMut(&K, &mut V,) -> bool, {
+    self.0.retain(move |k, v,| {
+      let mut num = v.as_num();
+      let keep = f(k, &mut num,);
+
+      match NonZero::new(num,) {
+        Some(num) => { *v = num; keep },
+        None => false,
+      }
+    },)
   }
 }
 
@@ -380,8 +393,6 @@ impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
     S2: BuildHasher,
     Option<V1::NonZero>: ToNumber<V1,>, {
   fn partial_cmp(&self, rhs: &HashMap<K, V2, S2>,) -> Option<Ordering> {
-    use std::collections::HashSet;
-
     //The collection of keys.
     let keys = self.keys()
       .chain(rhs.keys(),)
@@ -427,8 +438,6 @@ impl<K, V1, V2, S1, S2,> PartialOrd<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
     Option<V1::NonZero>: ToNumber<V1,>,
     Option<V2::NonZero>: ToNumber<V2,>, {
   fn partial_cmp(&self, rhs: &NumMap<K, V2, S2>,) -> Option<Ordering> {
-    use std::collections::HashSet;
-
     //The collection of keys.
     let keys = self.keys()
       .chain(rhs.keys(),)
@@ -770,18 +779,11 @@ impl<K, V1, V2, S,> Mul<V2> for NumMap<K, V1, S,>
 
 impl<K, V1, V2, S,> MulAssign<V2> for NumMap<K, V1, S,>
   where K: Eq + Clone + Hash,
-    V1: Number + Mul<V2, Output = V1>,
+    V1: Number + MulAssign<V2>,
     V2: Clone,
-    S: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
+    S: BuildHasher, {
   fn mul_assign(&mut self, rhs: V2,) {
-    let keys = self.keys().cloned().collect::<Vec<_>>();
-
-    for k in keys {
-      let v = self.get(&k,) * rhs.clone();
-
-      self.set(k, v,);
-    }
+    self.retain(move |_, v,| { *v *= rhs.clone(); true },)
   }
 }
 
@@ -796,18 +798,11 @@ impl<K, V1, V2, S,> Div<V2> for NumMap<K, V1, S,>
 
 impl<K, V1, V2, S,> DivAssign<V2> for NumMap<K, V1, S,>
   where K: Eq + Clone + Hash,
-    V1: Number + Div<V2, Output = V1>,
+    V1: Number + DivAssign<V2>,
     V2: Clone,
-    S: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
+    S: BuildHasher, {
   fn div_assign(&mut self, rhs: V2,) {
-    let keys = self.keys().cloned().collect::<Vec<_>>();
-
-    for k in keys {
-      let v = self.get(&k,) / rhs.clone();
-
-      self.set(k, v,);
-    }
+    self.retain(|_, v,| { *v /= rhs.clone(); true },)
   }
 }
 

@@ -4,7 +4,7 @@
 //! Last Moddified --- 2019-05-06
 
 use super::*;
-pub use std::collections::{hash_map::RandomState, HashMap,};
+pub use std::collections::{hash_map::RandomState, HashMap, HashSet,};
 
 /// A map of numbers where all keys are considered mapped but 0 values are not stored.
 pub struct NumMap<K, V, S = RandomState,>(pub(super) HashMap<K, V::NonZero, S>,)

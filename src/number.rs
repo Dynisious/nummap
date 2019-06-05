@@ -1,7 +1,7 @@
 //! Author --- daniel.bechaz@gmail.com  
 //! Last Moddified --- 2019-05-06
 
-use std::{num::*, mem,};
+use core::{num::*, mem,};
 
 mod number;
 mod to_number;
