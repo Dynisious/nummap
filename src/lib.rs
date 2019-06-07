@@ -201,6 +201,70 @@ impl<K, V, S,> NumMap<K, V, S,>
       Q: Eq + Hash + ?Sized, {
     self.0.remove(k,).as_num()
   }
+  /// Iterates the mappings for all the keys returned by `keys`.
+  /// 
+  /// # Params
+  /// 
+  /// keys --- The iterator of keys to visit.  
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// map.set(1, 2);
+  /// map.set(3, 4);
+  /// 
+  /// let mut iter = map.iter_keys(vec![&1, &2, &3],);
+  /// 
+  /// assert_eq!(iter.next(), Some((&1, 2)));
+  /// assert_eq!(iter.next(), Some((&2, 0)));
+  /// assert_eq!(iter.next(), Some((&3, 4)));
+  /// assert_eq!(iter.next(), None);
+  /// ```
+  pub fn iter_keys<'a, Q, Iter,>(&'a self, keys: Iter,) -> impl Iterator<Item = (&Q, V,)>
+    where K: Borrow<Q>,
+      Q: 'a + Eq + Hash + ?Sized,
+      Iter: IntoIterator<Item = &'a Q>, {
+    keys.into_iter().map(move |k,| (k, self.get(k,),),)
+  }
+  /// Applies a mapping function to the value of all the keys returned by `keys`.
+  /// 
+  /// # Params
+  /// 
+  /// keys --- The iterator of keys to visit.  
+  /// map --- The mapping function to apply to the entries.  
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// map.set(1, 2);
+  /// map.set(3, 4);
+  /// 
+  /// map.map_keys(vec![1, 2, 3], |_, v,| *v -= 2);
+  /// 
+  /// let mut iter = map.iter();
+  /// 
+  /// assert_eq!(iter.next(), Some((&2, -2)));
+  /// assert_eq!(iter.next(), Some((&3, 2)));
+  /// assert_eq!(iter.next(), None);
+  /// ```
+  pub fn map_keys<Iter, F,>(&mut self, keys: Iter, mut map: F,)
+    where Iter: IntoIterator<Item = K>,
+      F: FnMut(&K, &mut V,), {
+    for k in keys {
+      let mut v = self.get(&k,);
+
+      map(&k, &mut v,);
+      self.set(k, v,);
+    }
+  }
 }
 
 impl<K, V, S,> NumMap<K, V, S,>

@@ -4,7 +4,10 @@
 //! Last Moddified --- 2019-05-07
 
 use super::*;
-pub use std::collections::{hash_map::RandomState, HashMap, HashSet,};
+pub use std::collections::{
+  HashMap, HashSet,
+  hash_map::{RandomState, Entry,},
+};
 
 mod serde;
 
