@@ -1,7 +1,7 @@
 //! Implementations for [NumMap] which do not require the crate to be available.
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-06
+//! Last Moddified --- 2019-05-07
 
 use super::*;
 pub use hashbrown::{hash_map::DefaultHashBuilder, HashMap, HashSet,};

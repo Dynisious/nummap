@@ -98,6 +98,7 @@ mod iter;
 mod with_std;
 #[cfg(feature = "hashbrown",)]
 mod no_std;
+mod serde;
 
 pub use self::{number::*, iter::*,};
 #[cfg(not(feature = "hashbrown",),)]
