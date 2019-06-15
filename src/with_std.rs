@@ -1,15 +1,13 @@
 //! Implementations for [NumMap] which require the `std` crate to be available.
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-07
+//! Last Moddified --- 2019-05-16
 
 use super::*;
 pub use std::collections::{
   HashMap, HashSet,
   hash_map::{RandomState, Entry,},
 };
-
-mod serde;
 
 /// A map of numbers where all keys are considered mapped but 0 values are not stored.
 pub struct NumMap<K, V, S = RandomState,>(pub(super) HashMap<K, V::NonZero, S>,)

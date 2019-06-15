@@ -24,7 +24,7 @@
 //! ```
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-06
+//! Last Moddified --- 2019-05-16
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "hashbrown", no_std,)]
@@ -51,13 +51,16 @@ use core::{
 /// The specific `BuildHasher` to use can be specified after the mappings.
 /// 
 /// ```rust
-/// # #[macro_use] extern crate nummap; fn main() {
-/// map![(0, 1), (2, 3),; nummap::DefaultHashBuilder];
+/// # use nummap::*; fn main() {
+/// map![(0, 1), (2, 3); nummap::DefaultHashBuilder];
+/// map![(0, 1), (2, 3)];
+/// let _: NumMap<i32, i32> = map![];
 /// # }
 /// ```
 #[cfg(feature = "hashbrown",)]
 #[macro_export]
 macro_rules! map {
+  () => (::nummap::NumMap::<_, _, ::nummap::DefaultHashBuilder>::default());
   ($(($k:expr, $v:expr $(,)? ),)* ; $tp:ty) => {{
     let mut map = ::nummap::NumMap::<_, _, $tp>::default();
 
@@ -74,13 +77,16 @@ macro_rules! map {
 /// The specific `BuildHasher` to use can be specified after the mappings.
 /// 
 /// ```rust
-/// # #[macro_use] extern crate nummap; fn main() {
+/// # use nummap::*; fn main() {
 /// map![(0, 1), (2, 3),; std::collections::hash_map::RandomState];
+/// map![(0, 1), (2, 3)];
+/// let _: NumMap<i32, i32> = map![];
 /// # }
 /// ```
 #[cfg(not(feature = "hashbrown",),)]
 #[macro_export]
 macro_rules! map {
+  () => (::nummap::NumMap::<_, _, ::nummap::RandomState>::default());
   ($(($k:expr, $v:expr $(,)? ),)* ; $tp:ty) => {{
     let mut map = ::nummap::NumMap::<_, _, $tp>::default();
 
