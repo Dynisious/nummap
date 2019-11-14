@@ -31,7 +31,10 @@
 #![cfg_attr(feature = "map_get_key_value", feature(map_get_key_value,),)]
 #![feature(associated_type_defaults,)]
 
-extern crate core;
+#[cfg(test,)]
+extern crate std;
+extern crate alloc;
+
 use core::{
   hash::*, iter::*, fmt,
   ops::{
@@ -164,12 +167,41 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// assert_eq!(map.set(1, 2), 0);
   /// assert_eq!(map.set(1, 0), 2);
   /// ```
-  #[inline]
   pub fn set(&mut self, k: K, v: V,) -> V {
     match V::NonZero::new(v,) {
       Some(v) => self.insert(k, v,),
       None => self.remove(&k,),
     }
+  }
+  /// Updates the value mapped to the corresponding key and returns the old value.
+  /// 
+  /// # Examples
+  /// 
+  /// ```rust
+  /// use nummap::NumMap;
+  /// 
+  /// let mut map = NumMap::<i32, i32,>::new();
+  /// 
+  /// assert_eq!(map.update(1, |v,| *v = 2), 0);
+  /// assert_eq!(map.update(1, |v,| *v = 0), 2);
+  /// ```
+  pub fn update(&mut self, k: K, f: impl FnOnce(&mut V,),) -> V {
+    let entry = self.entry(k,);
+    let old_num = match &entry {
+      Entry::Occupied(entry) => entry.get().as_num(),
+      _ => V::ZERO,
+    };
+    let new_num = {
+      let mut num = old_num;
+
+      f(&mut num,); num
+    };
+
+    if let Some(num) = V::NonZero::new(new_num,) {
+      entry.insert(num,);
+    }
+
+    old_num
   }
   /// Updates the value mapped to the corresponding key and returns the old value.
   /// 
@@ -257,9 +289,7 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// 
   /// let mut iter = map.iter();
   /// 
-  /// assert_eq!(iter.next(), Some((&2, -2)));
-  /// assert_eq!(iter.next(), Some((&3, 2)));
-  /// assert_eq!(iter.next(), None);
+  /// assert_eq!(iter.count(), 2,);
   /// ```
   pub fn map_keys<Iter, F,>(&mut self, keys: Iter, mut map: F,)
     where Iter: IntoIterator<Item = K>,
@@ -424,29 +454,14 @@ impl<K, V, S,> Default for NumMap<K, V, S,>
   fn default() -> Self { HashMap::default().into() }
 }
 
-impl<K, V1, V2, S1, S2,> PartialEq<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    Self: PartialOrd<HashMap<K, V2, S2>>, {
-  fn eq(&self, rhs: &HashMap<K, V2, S2>,) -> bool {
-    match self.partial_cmp(rhs,) {
-      Some(cmp) => cmp == Ordering::Equal,
-      None => false,
-    }
-  }
-}
-
-impl<K, V1, V2, S1, S2,> PartialEq<NumMap<K, V2, S2,>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    V2: Number,
-    Self: PartialOrd<NumMap<K, V2, S2>>, {
-  fn eq(&self, rhs: &NumMap<K, V2, S2>,) -> bool {
+impl<K, V, S, A,> PartialEq<A> for NumMap<K, V, S,>
+  where V: Number,
+    A: Borrow<HashMap<K, V::NonZero, S>>,
+    Self: PartialOrd<A>, {
+  fn eq(&self, rhs: &A,) -> bool {
     //If the two sets are not equal size then they cannot be equal.
-    if self.len() != rhs.len() { return false }
-
-    match self.partial_cmp(rhs,) {
-      Some(cmp) => cmp == Ordering::Equal,
-      None => false,
-    }
+    self.len() == rhs.borrow().len()
+    && self.partial_cmp(rhs,) == Some(Ordering::Equal)
   }
 }
 
@@ -456,14 +471,14 @@ impl<K, V, S,> Eq for NumMap<K, V, S,>
 
 /// Compares the two sets; sets are only considered `Greater` or `Less` if **ALL** of the
 /// mapping are `Greater` or `Less` (`Equal` is ignored).
-impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+impl<K, V, S, A,> PartialOrd<A> for NumMap<K, V, S,>
   where K: Eq + Hash,
-    V1: Number + PartialOrd<V2>,
-    V2: Number,
-    S1: BuildHasher,
-    S2: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn partial_cmp(&self, rhs: &HashMap<K, V2, S2>,) -> Option<Ordering> {
+    V: Number + PartialOrd,
+    S: BuildHasher,
+    A: Borrow<HashMap<K, V::NonZero, S>>,
+    Option<V::NonZero>: ToNumber<V,>, {
+  fn partial_cmp(&self, rhs: &A,) -> Option<Ordering> {
+    let rhs = rhs.borrow();
     //The collection of keys.
     let keys = self.keys()
       .chain(rhs.keys(),)
@@ -474,50 +489,12 @@ impl<K, V1, V2, S1, S2,> PartialOrd<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
         let lhs = self.get(k,);
         
         match rhs.get(k,) {
-          Some(rhs) => lhs.partial_cmp(&rhs,),
-          None => lhs.partial_cmp(&V2::ZERO,),
+          Some(rhs) => lhs.partial_cmp(&rhs.as_num(),),
+          None => lhs.partial_cmp(&V::ZERO,),
         }
       },)
       //Filter out equal comparisons.
-      .filter(|cmp,| *cmp != Some(Ordering::Equal),);
-    //The first comparison found.
-    let cmp = match comparisons.next() {
-      //If a pair cannot be compared then the sets cannot be compared.
-      Some(cmp) => cmp?,
-      //If we found no nonequal comparisons the sets are equal.
-      None => return Some(Ordering::Equal),
-    };
-
-    for compare in comparisons {
-      //If a pair cannot be compared or two different comparisons exist in the set they
-      //cannot be compared.
-      if compare? != cmp { return None }
-    }
-
-    Some(cmp)
-  }
-}
-
-/// Compares the two sets; sets are only considered `Greater` or `Less` if **ALL** of the
-/// mapping are `Greater` or `Less` (`Equal` is ignored).
-impl<K, V1, V2, S1, S2,> PartialOrd<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Hash,
-    V1: Number + PartialOrd<V2>,
-    V2: Number,
-    S1: BuildHasher,
-    S2: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>,
-    Option<V2::NonZero>: ToNumber<V2,>, {
-  fn partial_cmp(&self, rhs: &NumMap<K, V2, S2>,) -> Option<Ordering> {
-    //The collection of keys.
-    let keys = self.keys()
-      .chain(rhs.keys(),)
-      .collect::<HashSet<_>>()
-      .into_iter();
-    //The comparisons between all of the value pairs.
-    let mut comparisons = keys.map(|k,| self.get(k,).partial_cmp(&rhs.get(k,),),)
-      //Filter out equal comparisons.
-      .filter(|cmp,| *cmp != Some(Ordering::Equal),);
+      .filter(|&cmp,| cmp != Some(Ordering::Equal),);
     //The first comparison found.
     let cmp = match comparisons.next() {
       //If a pair cannot be compared then the sets cannot be compared.
@@ -551,7 +528,9 @@ impl<K, V, S, A,> FromIterator<A> for NumMap<K, V, S,>
 }
 
 impl<'a, K, V, S,> Extend<(&'a K, &'a V,)> for NumMap<K, V, S,>
-  where K: 'a + Hash + Eq + Copy, V: 'a + Number, S: Default + BuildHasher, {
+  where K: 'a + Hash + Eq + Copy,
+    V: 'a + Number,
+    S: BuildHasher, {
   fn extend<Iter,>(&mut self, iter: Iter,)
     where Iter: IntoIterator<Item = (&'a K, &'a V,)>, {
     self.extend(iter.into_iter()
@@ -561,7 +540,9 @@ impl<'a, K, V, S,> Extend<(&'a K, &'a V,)> for NumMap<K, V, S,>
 }
 
 impl<K, V, S,> Extend<(K, V,)> for NumMap<K, V, S,>
-  where K: Hash + Eq, V: Number, S: Default + BuildHasher, {
+  where K: Hash + Eq,
+    V: Number,
+    S: BuildHasher, {
   fn extend<Iter,>(&mut self, iter: Iter,)
     where Iter: IntoIterator<Item = (K, V,)>, {
     self.0.extend(
@@ -616,10 +597,28 @@ impl<K, V, S,> BorrowMut<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
   fn borrow_mut(&mut self,) -> &mut HashMap<K, V::NonZero, S> { &mut self.0 }
 }
 
+impl<K, V, S,> Borrow<HashMap<K, V::NonZero, S>> for &'_ NumMap<K, V, S,>
+  where V: Number, {
+  #[inline]
+  fn borrow(&self,) -> &HashMap<K, V::NonZero, S> { &self.0 }
+}
+
+impl<K, V, S,> Borrow<HashMap<K, V::NonZero, S>> for &'_ mut NumMap<K, V, S,>
+  where V: Number, {
+  #[inline]
+  fn borrow(&self,) -> &HashMap<K, V::NonZero, S> { &self.0 }
+}
+
+impl<K, V, S,> BorrowMut<HashMap<K, V::NonZero, S>> for &'_ mut NumMap<K, V, S,>
+  where V: Number, {
+  #[inline]
+  fn borrow_mut(&mut self,) -> &mut HashMap<K, V::NonZero, S> { &mut self.0 }
+}
+
 impl<K, V, S,> AsRef<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
   where V: Number, {
   #[inline]
-  fn as_ref(&self,) -> &HashMap<K, V::NonZero, S> { &self }
+  fn as_ref(&self,) -> &HashMap<K, V::NonZero, S> { &self.0 }
 }
 
 impl<K, V, S,> AsMut<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
@@ -634,207 +633,64 @@ impl<K, V, S,> fmt::Debug for NumMap<K, V, S,>
   fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result { self.0.fmt(fmt,) }
 }
 
-impl<K, V1, V2, S1, S2,> Add<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    Self: AddAssign<HashMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn add(mut self, rhs: HashMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
-}
-
-impl<'a, K, V1, V2, S1, S2,> Add<&'a HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    Self: AddAssign<&'a HashMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn add(mut self, rhs: &'a HashMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
-}
-
-impl<K, V1, V2, S1, S2,> Add<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    V2: Number,
-    Self: AddAssign<NumMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn add(mut self, rhs: NumMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
-}
-
-impl<'a, K, V1, V2, S1, S2,> Add<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    V2: Number,
-    Self: AddAssign<&'a NumMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn add(mut self, rhs: &'a NumMap<K, V2, S2>,) -> Self::Output { self += rhs; self }
-}
-
-impl<K, V1, V2, S1, S2,> AddAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Hash,
-  V1: Number + Add<V2, Output = V1>,
-  S1: BuildHasher,
-  Option<V1::NonZero>: ToNumber<V1,>, {
-  fn add_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(&k,) + v;
-
-      self.set(k, v,);
-    }
-  }
-}
-
-impl<'a, K, V1, V2, S1, S2,> AddAssign<&'a HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Clone + Hash,
-  V1: Number + Add<V2, Output = V1>,
-  V2: Clone,
-  S1: BuildHasher,
-  Option<V1::NonZero>: ToNumber<V1,>, {
-  fn add_assign(&mut self, rhs: &'a HashMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(k,) + v.clone();
-
-      self.set(k.clone(), v,);
-    }
-  }
-}
-
-impl<K, V1, V2, S1, S2,> AddAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Hash,
-    V1: Number + Add<V2, Output = V1>,
-    V2: Number,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn add_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(&k,) + v;
-
-      self.set(k, v,);
-    }
-  }
-}
-
-impl<'a, K, V1, V2, S1, S2,> AddAssign<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Clone + Hash,
-    V1: Number + Add<V2, Output = V1>,
-    V2: Number,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn add_assign(&mut self, rhs: &'a NumMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(k,) + v;
-
-      self.set(k.clone(), v,);
-    }
-  }
-}
-
 impl<K, V, S,> Neg for NumMap<K, V, S,>
   where K: Eq + Hash,
-    V: Number + Neg,
-    S: BuildHasher + Default,
-    <V as Neg>::Output: Number, {
-  type Output = NumMap<K, <V as Neg>::Output, S,>;
-
-  #[inline]
-  fn neg(self,) -> Self::Output { self.into_iter().map(|(k, v,),| (k, -v,),).collect() }
-}
-
-impl<K, V1, V2, S1, S2,> Sub<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    Self: SubAssign<HashMap<K, V2, S2>>, {
+    V: Number + Neg<Output = V>,
+    S: BuildHasher, {
   type Output = Self;
 
-  #[inline]
-  fn sub(mut self, rhs: HashMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
-}
+  fn neg(mut self,) -> Self::Output {
+    use alloc::vec::Vec;
 
-impl<'a, K, V1, V2, S1, S2,> Sub<&'a HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    Self: SubAssign<&'a HashMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn sub(mut self, rhs: &'a HashMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
-}
-
-impl<K, V1, V2, S1, S2,> Sub<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    V2: Number,
-    Self: SubAssign<NumMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn sub(mut self, rhs: NumMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
-}
-
-impl<'a, K, V1, V2, S1, S2,> Sub<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where V1: Number,
-    V2: Number,
-    Self: SubAssign<&'a NumMap<K, V2, S2>>, {
-  type Output = Self;
-
-  #[inline]
-  fn sub(mut self, rhs: &'a NumMap<K, V2, S2>,) -> Self::Output { self -= rhs; self }
-}
-
-impl<K, V1, V2, S1, S2,> SubAssign<HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Hash,
-    V1: Number + Sub<V2, Output = V1>,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn sub_assign(&mut self, rhs: HashMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(&k,) - v;
-
-      self.set(k, v,);
-    }
+    let pairs = self.drain()
+      .map(|(k, v,),| (k, -v,),)
+      .collect::<Vec<_>>();
+    self.extend(pairs,);
+    
+    self
   }
 }
 
-impl<'a, K, V1, V2, S1, S2,> SubAssign<&'a HashMap<K, V2, S2>> for NumMap<K, V1, S1,>
+impl<K, V, S, A,> Add<A> for NumMap<K, V, S,>
+  where V: Number,
+    Self: AddAssign<A>, {
+  type Output = Self;
+
+  #[inline]
+  fn add(mut self, rhs: A,) -> Self::Output { self += rhs; self }
+}
+
+impl<K, V, S, A,> AddAssign<A> for NumMap<K, V, S,>
   where K: Eq + Clone + Hash,
-    V1: Number + Sub<V2, Output = V1>,
-    V2: Clone,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn sub_assign(&mut self, rhs: &'a HashMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(k,) - v.clone();
-
-      self.set(k.clone(), v,);
+    V: Number + AddAssign,
+    S: BuildHasher,
+    A: Borrow<HashMap<K, V::NonZero, S>>,
+    Option<V::NonZero>: ToNumber<V,>, {
+  fn add_assign(&mut self, rhs: A,) {
+    for (k, v,) in rhs.borrow() {
+      self.update(k.clone(), move |n,| *n += v.as_num(),);
     }
   }
 }
 
-impl<K, V1, V2, S1, S2,> SubAssign<NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
-  where K: Eq + Hash,
-    V1: Number + Sub<V2, Output = V1>,
-    V2: Number,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn sub_assign(&mut self, rhs: NumMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(&k,) - v;
+impl<K, V, S, A,> Sub<A> for NumMap<K, V, S,>
+  where V: Number,
+    Self: SubAssign<A>, {
+  type Output = Self;
 
-      self.set(k, v,);
-    }
-  }
+  #[inline]
+  fn sub(mut self, rhs: A,) -> Self::Output { self -= rhs; self }
 }
 
-impl<'a, K, V1, V2, S1, S2,> SubAssign<&'a NumMap<K, V2, S2>> for NumMap<K, V1, S1,>
+impl<K, V, S, A,> SubAssign<A> for NumMap<K, V, S,>
   where K: Eq + Clone + Hash,
-    V1: Number + Sub<V2, Output = V1>,
-    V2: Number,
-    S1: BuildHasher,
-    Option<V1::NonZero>: ToNumber<V1,>, {
-  fn sub_assign(&mut self, rhs: &'a NumMap<K, V2, S2>,) {
-    for (k, v,) in rhs {
-      let v = self.get(k,) - v;
-      
-      self.set(k.clone(), v,);
+    V: Number + SubAssign,
+    S: BuildHasher,
+    A: Borrow<HashMap<K, V::NonZero, S>>,
+    Option<V::NonZero>: ToNumber<V,>, {
+  fn sub_assign(&mut self, rhs: A,) {
+    for (k, v,) in rhs.borrow() {
+      self.update(k.clone(), move |n,| *n -= v.as_num(),);
     }
   }
 }
@@ -849,7 +705,7 @@ impl<K, V1, V2, S,> Mul<V2> for NumMap<K, V1, S,>
 }
 
 impl<K, V1, V2, S,> MulAssign<V2> for NumMap<K, V1, S,>
-  where K: Eq + Clone + Hash,
+  where K: Eq + Hash,
     V1: Number + MulAssign<V2>,
     V2: Clone,
     S: BuildHasher, {
@@ -873,7 +729,7 @@ impl<K, V1, V2, S,> DivAssign<V2> for NumMap<K, V1, S,>
     V2: Clone,
     S: BuildHasher, {
   fn div_assign(&mut self, rhs: V2,) {
-    self.retain(|_, v,| { *v /= rhs.clone(); true },)
+    self.retain(move |_, v,| { *v /= rhs.clone(); true },)
   }
 }
 
