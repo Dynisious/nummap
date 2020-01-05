@@ -1,5 +1,5 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-06
+//! Last Moddified --- 2020-01-06
 
 use super::*;
 #[cfg(not(feature = "hashbrown",),)]
@@ -36,12 +36,27 @@ impl<'a, K, V,> Iterator for Drain<'a, K, V,>
 }
 
 /// The IntoIterator type which visits all non zero values from a [NumMap].
+#[derive(Debug,)]
 pub struct IntoIter<K, V,>(pub(crate) Map<hash_map::IntoIter<K, V::NonZero>, fn((K, V::NonZero,)) -> (K, V,)>,)
   where V: Number;
 
 impl<K, V,> Iterator for IntoIter<K, V,>
   where V: Number, {
   type Item = (K, V,);
+
+  #[inline]
+  fn size_hint(&self,) -> (usize, Option<usize>,) { self.0.size_hint() }
+  #[inline]
+  fn next(&mut self,) -> Option<Self::Item> { self.0.next() }
+}
+
+/// The Iterator which visits all non zero values in a [NumMap].
+pub struct Values<'a, K, V,>(pub(crate) Map<hash_map::Values<'a, K, V::NonZero>, fn(&'a V::NonZero,) -> V>,)
+  where V: Number;
+
+impl<'a, K, V,> Iterator for Values<'a, K, V,>
+  where V: Number, {
+  type Item = V;
 
   #[inline]
   fn size_hint(&self,) -> (usize, Option<usize>,) { self.0.size_hint() }

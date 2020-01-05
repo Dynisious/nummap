@@ -24,7 +24,7 @@
 //! ```
 //! 
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-16
+//! Last Moddified --- 2020-01-06
 
 #![deny(missing_docs,)]
 #![cfg_attr(feature = "hashbrown", no_std,)]
@@ -121,6 +121,11 @@ impl<K, V, S,> NumMap<K, V, S,>
   #[inline]
   pub fn iter(&self,) -> Iter<K, V,> {
     Iter(self.0.iter().map(|(k, v,): (&K, &V::NonZero,),| (k, v.as_num(),),),)
+  }
+  /// An iterator over all the values present in this `NumMap`.
+  #[inline]
+  pub fn values(&self,) -> Values<K, V,> {
+    Values(self.0.values().map(|v: &V::NonZero,| v.as_num(),),)
   }
   /// An iterator over all the key/value pairs present in this `NumMap`.
   /// 
