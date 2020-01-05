@@ -267,11 +267,15 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// assert_eq!(iter.next(), Some((&3, 4)));
   /// assert_eq!(iter.next(), None);
   /// ```
-  pub fn iter_keys<'a, Q, Iter,>(&'a self, keys: Iter,) -> impl Iterator<Item = (&Q, V,)>
+  pub fn iter_keys<'a, Q, Iter,>(&'a self, keys: Iter,) -> impl 'a + Iterator<Item = (Q, V,)>
     where K: Borrow<Q>,
-      Q: 'a + Eq + Hash + ?Sized,
-      Iter: IntoIterator<Item = &'a Q>, {
-    keys.into_iter().map(move |k,| (k, self.get(k,),),)
+      Q: Eq + Hash,
+      Iter: 'a + IntoIterator<Item = Q>, {
+    keys.into_iter().map(move |k,| {
+      let value = self.get(&k,);
+
+      (k, value,)
+    },)
   }
   /// Applies a mapping function to the value of all the keys returned by `keys`.
   /// 
