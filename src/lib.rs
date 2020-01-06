@@ -260,11 +260,11 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// map.set(1, 2);
   /// map.set(3, 4);
   /// 
-  /// let mut iter = map.iter_keys(vec![&1, &2, &3],);
+  /// let mut iter = map.iter_keys(vec![1, 2, 3],);
   /// 
-  /// assert_eq!(iter.next(), Some((&1, 2)));
-  /// assert_eq!(iter.next(), Some((&2, 0)));
-  /// assert_eq!(iter.next(), Some((&3, 4)));
+  /// assert_eq!(iter.next(), Some((1, 2)));
+  /// assert_eq!(iter.next(), Some((2, 0)));
+  /// assert_eq!(iter.next(), Some((3, 4)));
   /// assert_eq!(iter.next(), None);
   /// ```
   pub fn iter_keys<'a, Q, Iter,>(&'a self, keys: Iter,) -> impl 'a + Iterator<Item = (Q, V,)>
@@ -637,9 +637,11 @@ impl<K, V, S,> AsMut<HashMap<K, V::NonZero, S>> for NumMap<K, V, S,>
 }
 
 impl<K, V, S,> fmt::Debug for NumMap<K, V, S,>
-  where V: Number, HashMap<K, V::NonZero, S>: fmt::Debug, {
-  #[inline]
-  fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result { self.0.fmt(fmt,) }
+  where K: fmt::Debug,
+    V: Number + fmt::Debug, {
+  fn fmt(&self, fmt: &mut fmt::Formatter,) -> fmt::Result {
+    fmt.debug_map().entries(self.iter(),).finish()
+  }
 }
 
 impl<K, V, S,> Neg for NumMap<K, V, S,>
