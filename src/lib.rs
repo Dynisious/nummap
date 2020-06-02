@@ -183,12 +183,16 @@ impl<K, V, S,> NumMap<K, V, S,>
   /// # Examples
   /// 
   /// ```rust
+  /// # #[macro_use] extern crate nummap; fn main() {
   /// use nummap::NumMap;
   /// 
   /// let mut map = NumMap::<i32, i32,>::new();
   /// 
   /// assert_eq!(map.update(1, |v,| *v = 2), 0);
+  /// assert_eq!(map, map![(1, 2)]);
   /// assert_eq!(map.update(1, |v,| *v = 0), 2);
+  /// assert_eq!(map, map![(1, 0)]);
+  /// # }
   /// ```
   pub fn update(&mut self, k: K, f: impl FnOnce(&mut V,),) -> V {
     let entry = self.entry(k,);
@@ -202,8 +206,12 @@ impl<K, V, S,> NumMap<K, V, S,>
       f(&mut num,); num
     };
 
+    //If the new number is non zero, insert it into the map.
     if let Some(num) = V::NonZero::new(new_num,) {
       entry.insert(num,);
+    //If the new number is zero, clear the entry.
+    } else if let Entry::Occupied(entry) = entry {
+      entry.remove();
     }
 
     old_num
