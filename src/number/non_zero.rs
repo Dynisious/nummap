@@ -1,5 +1,5 @@
 //! Author --- daniel.bechaz@gmail.com  
-//! Last Moddified --- 2019-05-06
+//! Last Moddified --- 2020-06-03
 
 use super::*;
 
@@ -7,7 +7,7 @@ use super::*;
 pub trait NonZero<Num,>: ToNumber<Num,> + Copy + Sized
   where Num: Number, {
   /// The optional equivelant of this
-  type Optional: ToNumber<Num,> = Option<Self>;
+  type Optional = Option<Self>;
 
   /// Constructs a new value returning `None` for `0`.
   fn new(num: Num,) -> Option<Self>;

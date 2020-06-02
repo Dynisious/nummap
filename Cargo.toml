@@ -11,7 +11,8 @@ description = "Defines a wrapper around a `HashMap` of number values which behav
 readme = "README.md"
 
 [features]
-default = ["hashbrown"]
+default = ["no_std"]
+no_std = ["hashbrown"]
 map_get_key_value = []
 
 [dependencies]
